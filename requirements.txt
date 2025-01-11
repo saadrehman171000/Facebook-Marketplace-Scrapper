@@ -1,5 +1,5 @@
 streamlit
-selenium==4.15.2
+selenium>=4.15.2
 webdriver-manager
 beautifulsoup4
 pandas
