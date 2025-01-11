@@ -1,0 +1,13 @@
+[browser]
+serverAddress = "0.0.0.0"
+serverPort = 8501
+
+[server]
+enableCORS = false
+enableXsrfProtection = false
+
+[theme]
+primaryColor = "#FF4B4B"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#262730"
+textColor = "#FAFAFA"
