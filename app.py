@@ -12,6 +12,7 @@ from datetime import datetime
 from selenium.webdriver.chrome.options import Options
 import zipfile
 import io
+import os
 
 # Add this function before your scraping functions
 def setup_chrome_options():
@@ -20,6 +21,7 @@ def setup_chrome_options():
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-gpu')
+    chrome_options.binary_location = os.environ.get("GOOGLE_CHROME_BIN")
     return chrome_options
 
 # Function to run the web scraping for exact matches
@@ -35,7 +37,8 @@ def scrape_facebook_marketplace(city, product, min_price, max_price, city_code_f
     chrome_options = setup_chrome_options()
     
     try:
-        browser = webdriver.Chrome(options=chrome_options)
+        service = Service(os.environ.get("CHROMEDRIVER_PATH"))
+        browser = webdriver.Chrome(service=service, options=chrome_options)
     except Exception as e:
         st.error(f"Failed to initialize Chrome: {str(e)}")
         return pd.DataFrame(), 0
