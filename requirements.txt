@@ -1,6 +1,5 @@
 streamlit
-selenium>=4.15.2
-webdriver-manager
+undetected-chromedriver
 beautifulsoup4
 pandas
 fuzzywuzzy
