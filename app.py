@@ -12,13 +12,12 @@ import io
 
 def setup_chrome_options():
     chrome_options = Options()
-    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--headless=new')
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-blink-features=AutomationControlled')
     chrome_options.add_argument('--disable-gpu')
-    chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
+    chrome_options.binary_location = '/usr/bin/chromium'
     return chrome_options
 
 def scrape_facebook_marketplace(city, product, min_price, max_price, city_code_fb, exact, sleep_time=5):
@@ -26,7 +25,6 @@ def scrape_facebook_marketplace(city, product, min_price, max_price, city_code_f
     
     try:
         browser = webdriver.Chrome(options=chrome_options)
-        browser.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     except Exception as e:
         st.error(f"Failed to initialize Chrome: {str(e)}")
         return pd.DataFrame(), 0
