@@ -17,7 +17,10 @@ def setup_chrome_options():
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-blink-features=AutomationControlled')
     chrome_options.add_argument('--disable-gpu')
-    chrome_options.binary_location = '/usr/bin/chromium'
+    chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
     return chrome_options
 
 def scrape_facebook_marketplace(city, product, min_price, max_price, city_code_fb, exact, sleep_time=5):
@@ -25,87 +28,53 @@ def scrape_facebook_marketplace(city, product, min_price, max_price, city_code_f
     
     try:
         browser = webdriver.Chrome(options=chrome_options)
+        browser.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         st.info("Browser initialized successfully...")
         
-        # Setup URL
+        # Setup URL with mobile version
         exact_param = 'true' if exact else 'false'
-        url = f"https://www.facebook.com/marketplace/{city_code_fb}/search?query={product}&minPrice={min_price}&maxPrice={max_price}&daysSinceListed=1&exact={exact_param}"
+        url = f"https://m.facebook.com/marketplace/{city_code_fb}/search/?query={product}&minPrice={min_price}&maxPrice={max_price}"
         browser.get(url)
         st.info(f"Accessing URL: {url}")
 
-        time.sleep(4)
+        time.sleep(5)  # Wait longer for initial load
         st.info("Scrolling page to load more items...")
 
         # Scroll down to load more items
-        count = 0
-        last_height = browser.execute_script("return document.body.scrollHeight")
-        while True:
+        for i in range(3):
             browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(sleep_time)
-            new_height = browser.execute_script("return document.body.scrollHeight")
-            st.info(f"Scroll {count + 1} completed...")
-            if (new_height == last_height) or count == 3:  # Reduced scroll count for testing
-                break
-            last_height = new_height
-            count = count + 1
+            st.info(f"Scroll {i + 1} completed...")
 
         st.info("Parsing page content...")
         html = browser.page_source
-        browser.quit()
-
-        # Use BeautifulSoup to parse the HTML
-        soup = BeautifulSoup(html, 'html.parser')
-        links = soup.find_all('a')
-        st.info(f"Found {len(links)} total links")
-
-        # Filter links based on search criteria
-        if exact:
-            final_links = []
-            for link in links:
-                if fuzz.partial_ratio(product.lower(), link.text.lower()) >= 90:
-                    if fuzz.partial_ratio(city.lower().rstrip(), link.text.lower()) >= 70:
-                        final_links.append(link)
-        else:
-            fuzz_threshold = 70
-            final_links = [
-                link for link in links
-                if fuzz.partial_ratio(product.lower(), link.text.lower()) > fuzz_threshold and city.lower() in link.text.lower()
-            ]
-
-        st.info(f"Found {len(final_links)} matching items")
-
-        # Extract product data
+        
+        # Look for specific marketplace elements
+        items = browser.find_elements(By.CSS_SELECTOR, 'div[style*="background-image"]')
+        st.info(f"Found {len(items)} potential items")
+        
         extracted_data = []
-        for prod_link in final_links:
-            url = prod_link.get('href')
-            text = '\n'.join(prod_link.stripped_strings)
-            lines = text.split('\n')
+        for item in items:
+            try:
+                parent = item.find_element(By.XPATH, './ancestor::a')
+                title = parent.get_attribute('aria-label')
+                url = parent.get_attribute('href')
+                price_elem = parent.find_element(By.CSS_SELECTOR, 'span[style*="color"]')
+                price_text = price_elem.text.replace('PKR', '').replace(',', '').strip()
+                price = float(price_text) if price_text.replace('.','',1).isdigit() else None
+                
+                extracted_data.append({
+                    'title': title,
+                    'price': price,
+                    'location': city,
+                    'url': url
+                })
+            except Exception as e:
+                continue
 
-            numeric_pattern = re.compile(r'\d[\d, •]*')
-            price = None
-
-            for line in lines:
-                match = numeric_pattern.search(line)
-                if match:
-                    price_str = match.group()
-                    price = float(price_str.replace(',', ''))
-                    break
-
-            title = lines[-2] if len(lines) > 1 else ""
-            location = lines[-1] if lines else ""
-
-            extracted_data.append({
-                'title': title,
-                'price': price,
-                'location': location,
-                'url': url
-            })
-
-        base = "https://web.facebook.com/"
-        for items in extracted_data:
-            items['url'] = base + items['url']
-
-        # Create a DataFrame
+        browser.quit()
+        
+        # Create DataFrame
         items_df = pd.DataFrame(extracted_data)
         
         if items_df.empty:
@@ -113,10 +82,12 @@ def scrape_facebook_marketplace(city, product, min_price, max_price, city_code_f
         else:
             st.success(f"Found {len(items_df)} items!")
             
-        return items_df, len(links)
+        return items_df, len(items)
 
     except Exception as e:
         st.error(f"Error during scraping: {str(e)}")
+        if 'browser' in locals():
+            browser.quit()
         return pd.DataFrame(), 0
 
 # Streamlit UI
