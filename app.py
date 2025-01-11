@@ -25,30 +25,38 @@ def scrape_facebook_marketplace(city, product, min_price, max_price, city_code_f
     
     try:
         browser = webdriver.Chrome(options=chrome_options)
-    except Exception as e:
-        st.error(f"Failed to initialize Chrome: {str(e)}")
-        return pd.DataFrame(), 0
-
-    try:
+        st.info("Browser initialized successfully...")
+        
         # Setup URL
         exact_param = 'true' if exact else 'false'
         url = f"https://www.facebook.com/marketplace/{city_code_fb}/search?query={product}&minPrice={min_price}&maxPrice={max_price}&daysSinceListed=1&exact={exact_param}"
         browser.get(url)
+        st.info(f"Accessing URL: {url}")
 
-        # Wait for content to load
-        time.sleep(2)
+        time.sleep(4)
+        st.info("Scrolling page to load more items...")
 
-        # Scroll a few times
-        for _ in range(3):
-            browser.execute_script("window.scrollTo(0, document.body.scrollHeight)")
-            time.sleep(1)
+        # Scroll down to load more items
+        count = 0
+        last_height = browser.execute_script("return document.body.scrollHeight")
+        while True:
+            browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(sleep_time)
+            new_height = browser.execute_script("return document.body.scrollHeight")
+            st.info(f"Scroll {count + 1} completed...")
+            if (new_height == last_height) or count == 3:  # Reduced scroll count for testing
+                break
+            last_height = new_height
+            count = count + 1
 
-        # Get the page content
+        st.info("Parsing page content...")
         html = browser.page_source
+        browser.quit()
 
         # Use BeautifulSoup to parse the HTML
         soup = BeautifulSoup(html, 'html.parser')
         links = soup.find_all('a')
+        st.info(f"Found {len(links)} total links")
 
         # Filter links based on search criteria
         if exact:
@@ -63,6 +71,8 @@ def scrape_facebook_marketplace(city, product, min_price, max_price, city_code_f
                 link for link in links
                 if fuzz.partial_ratio(product.lower(), link.text.lower()) > fuzz_threshold and city.lower() in link.text.lower()
             ]
+
+        st.info(f"Found {len(final_links)} matching items")
 
         # Extract product data
         extracted_data = []
@@ -97,6 +107,12 @@ def scrape_facebook_marketplace(city, product, min_price, max_price, city_code_f
 
         # Create a DataFrame
         items_df = pd.DataFrame(extracted_data)
+        
+        if items_df.empty:
+            st.warning("No items found matching your criteria.")
+        else:
+            st.success(f"Found {len(items_df)} items!")
+            
         return items_df, len(links)
 
     except Exception as e:
