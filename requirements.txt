@@ -1,5 +1,5 @@
 streamlit
-playwright
+selenium
 beautifulsoup4
 pandas
 fuzzywuzzy

@@ -1,5 +1,7 @@
 ﻿import streamlit as st
-from playwright.sync_api import sync_playwright
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 import re
 import pandas as pd
@@ -8,87 +10,96 @@ from fuzzywuzzy import fuzz
 import zipfile
 import io
 
-def scrape_facebook_marketplace_exact(city, product, min_price, max_price, city_code_fb, sleep_time):
-    return scrape_facebook_marketplace(city, product, min_price, max_price, city_code_fb, exact=True, sleep_time=sleep_time)
-
-def scrape_facebook_marketplace_partial(city, product, min_price, max_price, city_code_fb, sleep_time):
-    return scrape_facebook_marketplace(city, product, min_price, max_price, city_code_fb, exact=False, sleep_time=sleep_time)
+def setup_chrome_options():
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+    return chrome_options
 
 def scrape_facebook_marketplace(city, product, min_price, max_price, city_code_fb, exact, sleep_time=5):
+    chrome_options = setup_chrome_options()
+    
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+        browser = webdriver.Chrome(options=chrome_options)
+        browser.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    except Exception as e:
+        st.error(f"Failed to initialize Chrome: {str(e)}")
+        return pd.DataFrame(), 0
 
-            # Setup URL
-            exact_param = 'true' if exact else 'false'
-            url = f"https://www.facebook.com/marketplace/{city_code_fb}/search?query={product}&minPrice={min_price}&maxPrice={max_price}&daysSinceListed=1&exact={exact_param}"
-            page.goto(url)
+    try:
+        # Setup URL
+        exact_param = 'true' if exact else 'false'
+        url = f"https://www.facebook.com/marketplace/{city_code_fb}/search?query={product}&minPrice={min_price}&maxPrice={max_price}&daysSinceListed=1&exact={exact_param}"
+        browser.get(url)
 
-            # Wait for content to load
-            page.wait_for_timeout(2000)
+        # Wait for content to load
+        time.sleep(2)
 
-            # Scroll a few times
-            for _ in range(3):
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                page.wait_for_timeout(1000)
+        # Scroll a few times
+        for _ in range(3):
+            browser.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+            time.sleep(1)
 
-            # Get the page content
-            html = page.content()
-            browser.close()
+        # Get the page content
+        html = browser.page_source
 
-            # Use BeautifulSoup to parse the HTML
-            soup = BeautifulSoup(html, 'html.parser')
-            links = soup.find_all('a')
+        # Use BeautifulSoup to parse the HTML
+        soup = BeautifulSoup(html, 'html.parser')
+        links = soup.find_all('a')
 
-            # Filter links based on search criteria
-            if exact:
-                final_links = []
-                for link in links:
-                    if fuzz.partial_ratio(product.lower(), link.text.lower()) >= 90:
-                        if fuzz.partial_ratio(city.lower().rstrip(), link.text.lower()) >= 70:
-                            final_links.append(link)
-            else:
-                fuzz_threshold = 70
-                final_links = [
-                    link for link in links
-                    if fuzz.partial_ratio(product.lower(), link.text.lower()) > fuzz_threshold and city.lower() in link.text.lower()
-                ]
+        # Filter links based on search criteria
+        if exact:
+            final_links = []
+            for link in links:
+                if fuzz.partial_ratio(product.lower(), link.text.lower()) >= 90:
+                    if fuzz.partial_ratio(city.lower().rstrip(), link.text.lower()) >= 70:
+                        final_links.append(link)
+        else:
+            fuzz_threshold = 70
+            final_links = [
+                link for link in links
+                if fuzz.partial_ratio(product.lower(), link.text.lower()) > fuzz_threshold and city.lower() in link.text.lower()
+            ]
 
-            # Extract product data
-            extracted_data = []
-            for prod_link in final_links:
-                url = prod_link.get('href')
-                text = '\n'.join(prod_link.stripped_strings)
-                lines = text.split('\n')
+        # Extract product data
+        extracted_data = []
+        for prod_link in final_links:
+            url = prod_link.get('href')
+            text = '\n'.join(prod_link.stripped_strings)
+            lines = text.split('\n')
 
-                numeric_pattern = re.compile(r'\d[\d, •]*')
-                price = None
+            numeric_pattern = re.compile(r'\d[\d, •]*')
+            price = None
 
-                for line in lines:
-                    match = numeric_pattern.search(line)
-                    if match:
-                        price_str = match.group()
-                        price = float(price_str.replace(',', ''))
-                        break
+            for line in lines:
+                match = numeric_pattern.search(line)
+                if match:
+                    price_str = match.group()
+                    price = float(price_str.replace(',', ''))
+                    break
 
-                title = lines[-2] if len(lines) > 1 else ""
-                location = lines[-1] if lines else ""
+            title = lines[-2] if len(lines) > 1 else ""
+            location = lines[-1] if lines else ""
 
-                extracted_data.append({
-                    'title': title,
-                    'price': price,
-                    'location': location,
-                    'url': url
-                })
+            extracted_data.append({
+                'title': title,
+                'price': price,
+                'location': location,
+                'url': url
+            })
 
-            base = "https://web.facebook.com/"
-            for items in extracted_data:
-                items['url'] = base + items['url']
+        base = "https://web.facebook.com/"
+        for items in extracted_data:
+            items['url'] = base + items['url']
 
-            # Create a DataFrame
-            items_df = pd.DataFrame(extracted_data)
-            return items_df, len(links)
+        # Create a DataFrame
+        items_df = pd.DataFrame(extracted_data)
+        return items_df, len(links)
 
     except Exception as e:
         st.error(f"Error during scraping: {str(e)}")
