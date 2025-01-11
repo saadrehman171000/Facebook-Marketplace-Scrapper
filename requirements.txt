@@ -1,7 +1,7 @@
-     streamlit
-     selenium
-     webdriver-manager
-     beautifulsoup4
-     pandas
-     fuzzywuzzy
-     python-Levenshtein
+streamlit
+selenium==4.15.2
+webdriver-manager
+beautifulsoup4
+pandas
+fuzzywuzzy
+python-Levenshtein

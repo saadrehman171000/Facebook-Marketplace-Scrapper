@@ -13,6 +13,15 @@ from selenium.webdriver.chrome.options import Options
 import zipfile
 import io
 
+# Add this function before your scraping functions
+def setup_chrome_options():
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    return chrome_options
+
 # Function to run the web scraping for exact matches
 def scrape_facebook_marketplace_exact(city, product, min_price, max_price, city_code_fb, sleep_time):
     return scrape_facebook_marketplace(city, product, min_price, max_price, city_code_fb, exact=True, sleep_time=sleep_time)
@@ -23,11 +32,13 @@ def scrape_facebook_marketplace_partial(city, product, min_price, max_price, cit
 
 # Main scraping function with an exact match flag
 def scrape_facebook_marketplace(city, product, min_price, max_price, city_code_fb, exact, sleep_time=5):
-    chrome_options = Options()
-    # chrome_options.add_argument("--headless")  # Uncomment if you want headless mode
-
-    # Use WebDriverManager to handle ChromeDriver installation
-    browser = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    chrome_options = setup_chrome_options()
+    
+    try:
+        browser = webdriver.Chrome(options=chrome_options)
+    except Exception as e:
+        st.error(f"Failed to initialize Chrome: {str(e)}")
+        return pd.DataFrame(), 0
 
     # Setup URL
     exact_param = 'true' if exact else 'false'
