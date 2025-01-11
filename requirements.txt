@@ -1,5 +1,5 @@
 streamlit
-undetected-chromedriver
+playwright
 beautifulsoup4
 pandas
 fuzzywuzzy
